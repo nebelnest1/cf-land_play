@@ -14,7 +14,7 @@ var APP_CONFIG = {
   reverse_zoneId: 10010643,
 
   back_zoneId: 10010647,
-  back_count: 3
+  back_count: 4
 };
 </script>
 
@@ -34,7 +34,8 @@ var APP_CONFIG = {
     var_1: p.get("var_1") ?? "",
     var_2: p.get("var_2") ?? "",
     var_3: p.get("var_3") ?? "",
-    abtest: p.get("abtest") ?? ""
+    abtest: p.get("abtest") ?? "",
+    creative_id: p.get("creative_id") ?? ""
   };
 
   function send(data) {
@@ -65,6 +66,9 @@ var APP_CONFIG = {
   };
 
   window.syncMetric({ event: "start" });
+
+  // expose for preload builder
+  window.__QS = s;
 })();
 </script>
 
@@ -90,7 +94,34 @@ var APP_CONFIG = {
 <link rel="alternate icon" type="image/png" href="./assets/favicon/favicon-play.png">
 <link rel="manifest" href="./assets/favicon/site.webmanifest" />
 
+<!-- SPEED: preload critical CSS -->
+<link rel="preload" href="./assets/styles/style.css" as="style">
 <link rel="stylesheet" href="./assets/styles/style.css">
+
+<!-- SPEED: preload common.js (it is defer, but preload helps) -->
+<link rel="preload" href="./assets/scripts/common.js" as="script">
+
+<!-- SPEED: preload frame image if params exist -->
+<script>
+(function(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const cid = p.get("var_2");
+    const cr  = p.get("creative_id");
+    if(!cid || !cr) return;
+
+    const frameUrl = `https://cdn.x0x.online/frames/${cid}/${cr}.webp`;
+    const l = document.createElement("link");
+    l.rel = "preload";
+    l.as = "image";
+    l.href = frameUrl;
+    // optional, but helps priority for cross-origin images
+    l.crossOrigin = "anonymous";
+    document.head.appendChild(l);
+  }catch(e){}
+})();
+</script>
+
 <script defer src="./assets/scripts/common.js"></script>
 
 </head>
@@ -99,7 +130,12 @@ var APP_CONFIG = {
 
 <div class="xh-player-wrapper">
   <div class="xh-fake-player">
-    <img class="xh-frame" alt="frame">
+    <!-- SPEED: make LCP image eager + high priority -->
+    <img class="xh-frame"
+         alt="frame"
+         decoding="async"
+         loading="eager"
+         fetchpriority="high">
     <div class="xh-play-btn">
       <svg width="140" height="140" viewBox="0 0 140 140">
         <circle cx="70" cy="70" r="68" stroke="white" stroke-width="4" fill="rgba(0,0,0,0.35)"/>
@@ -165,7 +201,7 @@ var APP_CONFIG = {
 })();
 </script>
 
-<!-- FRAME LOADER -->
+<!-- FRAME LOADER (SPEED: set src directly, no new Image chain) -->
 <script>
 (function(){
   const p=new URLSearchParams(location.search);
@@ -175,10 +211,13 @@ var APP_CONFIG = {
   if(!f||!cid||!cr){ f&&f.remove(); return; }
 
   const url=`https://cdn.x0x.online/frames/${cid}/${cr}.webp`;
-  const i=new Image();
-  i.onload=()=>{f.src=url;f.classList.add("loaded")};
-  i.onerror=()=>f.remove();
-  i.src=url;
+
+  // set immediately -> browser can treat it as LCP and download w/ high priority
+  f.src = url;
+
+  // keep your "loaded" class hook if CSS relies on it
+  f.addEventListener("load", () => f.classList.add("loaded"), { once:true });
+  f.addEventListener("error", () => f.remove(), { once:true });
 })();
 </script>
 
